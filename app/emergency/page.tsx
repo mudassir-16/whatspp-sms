@@ -16,7 +16,8 @@ import { doc, getDoc } from "firebase/firestore"
 import { createEmergencyRequest, searchDonors } from "@/lib/firestore-utils"
 import { sendEmail, sendEmergencyNotifications, ADMIN_EMAIL } from "@/lib/email-service"
 import { sendBloodRequestWhatsAppNotifications } from "@/lib/whatsapp-notifications"
-import { sendSMS } from "@/lib/twilio-service"
+// NOTE: Do NOT import server-only Twilio client into client components.
+// Use the server API endpoints (`/api/send-sms` or `/api/send-sms/broadcast`) instead.
 
 const BLOOD_GROUPS = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"]
 const DISTRICTS = [
@@ -274,7 +275,7 @@ export default function EmergencyPage() {
             contactPhone: formData.contactPhone,
           })
 
-          // Send SMS notifications using Twilio
+          // Send SMS notifications using Twilio via the server API
           const donorsWithPhones = compatibleDonors
             .filter(donor => donor.phone && donor.isAvailable)
 
@@ -283,13 +284,27 @@ export default function EmergencyPage() {
 
             const smsBody = `🚨 NSS URGENT: ${formData.bloodGroup} needed at ${formData.district}. Priority: ${formData.urgency.toUpperCase()}. Contact ${formData.contactName}: ${formData.contactPhone}. Details: ${formData.description.substring(0, 50)}...`
 
-            // Send SMS to each donor
-            await Promise.all(donorsWithPhones.map(donor =>
-              sendSMS({
-                to: donor.phone,
-                body: smsBody
+            // Use server-side broadcast endpoint to avoid bundling native Node modules in the client
+            try {
+              const response = await fetch('/api/send-sms/broadcast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  phoneNumbers: donorsWithPhones.map(d => d.phone),
+                  message: smsBody
+                })
               })
-            ))
+
+              const result = await response.json().catch(() => ({}))
+
+              if (!response.ok) {
+                console.error('SMS broadcast failed:', result.error || result)
+              } else {
+                console.log('SMS broadcast result:', result)
+              }
+            } catch (smsError) {
+              console.error('SMS broadcast error:', smsError)
+            }
           }
         } catch (notifierError) {
           console.error("Background notification error:", notifierError)
