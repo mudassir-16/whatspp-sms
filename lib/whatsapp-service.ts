@@ -5,6 +5,8 @@ if (typeof window !== "undefined") {
 
 // Use type imports to avoid bundling issues
 import type { Client as WhatsAppClient, LocalAuth as WhatsAppLocalAuth, Message } from "whatsapp-web.js"
+import fs from "fs"
+import path from "path"
 
 // Dynamic imports to prevent Next.js from bundling these packages at build time
 let Client: typeof WhatsAppClient | null = null
@@ -64,9 +66,35 @@ export async function initializeWhatsApp(waitForReady: boolean = true): Promise<
         throw new Error("Failed to load WhatsApp dependencies")
       }
 
+      // Ensure the auth data path exists and is writable. If the configured
+      // WHATSAPP_DATA_PATH is not writable, fallback to a local `.wwebjs_auth`
+      // directory so the server doesn't crash silently. This improves
+      // observability when deploying to platforms like Render where mount
+      // points may be read-only or owned by a different user.
+      let configuredDataPath = process.env.WHATSAPP_DATA_PATH || ".wwebjs_auth"
+      try {
+        const resolvedPath = path.resolve(configuredDataPath)
+        // Create directory if it doesn't exist
+        await fs.promises.mkdir(resolvedPath, { recursive: true })
+        // Test writability by writing and removing a temp file
+        const testFile = path.join(resolvedPath, `.wwebjs_write_test_${Date.now()}`)
+        await fs.promises.writeFile(testFile, "ok")
+        await fs.promises.unlink(testFile)
+        state.loadingMessage = `Using WhatsApp auth path: ${resolvedPath}`
+        configuredDataPath = resolvedPath
+      } catch (err: any) {
+        console.warn("⚠️ WHATSAPP_DATA_PATH is not writable or cannot be created:", process.env.WHATSAPP_DATA_PATH, "- falling back to .wwebjs_auth. Error:", err && err.message)
+        configuredDataPath = path.resolve(".wwebjs_auth")
+        try {
+          await fs.promises.mkdir(configuredDataPath, { recursive: true })
+        } catch (e) {
+          console.error("❌ Failed to create fallback .wwebjs_auth directory:", e)
+        }
+      }
+
       state.client = new Client({
         authStrategy: new LocalAuth({
-          dataPath: process.env.WHATSAPP_DATA_PATH || ".wwebjs_auth" // persistent disk or fallback to local
+          dataPath: configuredDataPath // persistent disk or fallback to local
         }),
         puppeteer: {
           headless: true,
