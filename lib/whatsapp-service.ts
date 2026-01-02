@@ -7,6 +7,7 @@ if (typeof window !== "undefined") {
 import type { Client as WhatsAppClient, LocalAuth as WhatsAppLocalAuth, Message } from "whatsapp-web.js"
 import fs from "fs"
 import path from "path"
+import util from "util"
 
 // Dynamic imports to prevent Next.js from bundling these packages at build time
 let Client: typeof WhatsAppClient | null = null
@@ -130,15 +131,49 @@ export async function initializeWhatsApp(waitForReady: boolean = true): Promise<
         }
       })
 
-      state.client.on("ready", () => {
-        console.log("✅ WhatsApp client is ready!")
+      state.client.on("ready", (...args: any[]) => {
+        console.log("✅ WhatsApp client is ready!", util.inspect(args, { depth: 2 }))
         state.isReady = true
+        state.isInitialized = true
         state.currentQRCode = null // Clear QR code once connected
       })
 
-      state.client.on("authenticated", () => {
-        console.log("✅ WhatsApp authenticated successfully")
+      state.client.on("authenticated", (...args: any[]) => {
+        try {
+          console.log("✅ WhatsApp authenticated successfully", util.inspect(args, { depth: 2 }))
+        } catch (e) {
+          console.log("✅ WhatsApp authenticated successfully")
+        }
         state.isAuthenticated = true
+        // Mark initialized so status checks don't repeatedly try to reinit
+        state.isInitialized = true
+        // After authentication, some environments may not reliably emit
+        // the 'ready' event. Probe the client API (getChats) to confirm
+        // connectivity and set `isReady` when possible.
+        ;(async () => {
+          if (!state.client) return
+          const clientAny: any = state.client
+          for (let i = 0; i < 30; i++) {
+            try {
+              if (typeof clientAny.getChats === "function") {
+                await clientAny.getChats()
+                console.log("ℹ️ Probed client.getChats() succeeded — marking ready")
+                state.isReady = true
+                state.currentQRCode = null
+                break
+              } else if (typeof clientAny.info === "object" || typeof clientAny.info === "function") {
+                // fallback: access `info` to confirm connectivity
+                console.log("ℹ️ Client has info object — marking ready")
+                state.isReady = true
+                state.currentQRCode = null
+                break
+              }
+            } catch (err: any) {
+              console.log("ℹ️ Probe attempt", i + 1, "failed:", err && err.message)
+              await new Promise((r) => setTimeout(r, 1000))
+            }
+          }
+        })()
       })
 
       state.client.on("loading_screen", (percent: string, message: string) => {
@@ -147,14 +182,14 @@ export async function initializeWhatsApp(waitForReady: boolean = true): Promise<
         state.loadingMessage = message
       })
 
-      state.client.on("auth_failure", (msg: string) => {
-        console.error("❌ WhatsApp authentication failed:", msg)
+      state.client.on("auth_failure", (...args: any[]) => {
+        console.error("❌ WhatsApp authentication failed:", util.inspect(args, { depth: 2 }))
         state.isAuthenticated = false
         state.isReady = false
       })
 
-      state.client.on("disconnected", (reason: string) => {
-        console.log("⚠️  WhatsApp client disconnected:", reason)
+      state.client.on("disconnected", (...args: any[]) => {
+        console.log("⚠️  WhatsApp client disconnected:", util.inspect(args, { depth: 2 }))
         state.isAuthenticated = false
         state.isReady = false
         state.isInitialized = false
