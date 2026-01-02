@@ -66,7 +66,7 @@ export async function initializeWhatsApp(waitForReady: boolean = true): Promise<
 
       state.client = new Client({
         authStrategy: new LocalAuth({
-          dataPath: "/var/data/whatsapp" // persistent disk
+          dataPath: process.env.WHATSAPP_DATA_PATH || ".wwebjs_auth" // persistent disk or fallback to local
         }),
         puppeteer: {
           headless: true,
