@@ -29,6 +29,7 @@ export default function AdminSMSPage() {
         authToken: false,
         phoneNumber: false
     })
+    const [sandboxUrl, setSandboxUrl] = useState<string>("")
 
     useEffect(() => {
         // Check admin session
@@ -39,6 +40,8 @@ export default function AdminSMSPage() {
         }
 
         fetchStats()
+        const saved = localStorage.getItem('twilioWhatsAppSandbox')
+        if (saved) setSandboxUrl(saved)
     }, [])
 
     const fetchStats = async () => {
@@ -199,6 +202,42 @@ export default function AdminSMSPage() {
                                             </AlertDescription>
                                         </Alert>
                                     )}
+                                </CardContent>
+                            </Card>
+
+                            {/* Twilio WhatsApp Sandbox */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <MessageSquare className="h-5 w-5" />
+                                        WhatsApp Sandbox
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <p className="text-sm text-muted-foreground">Suggested webhook URL (set this in Twilio):</p>
+                                    <div className="flex gap-2">
+                                        <Input readOnly value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/whatsfrom`} />
+                                        <Button onClick={async () => {
+                                            try {
+                                                const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/api/whatsfrom`
+                                                await navigator.clipboard.writeText(url)
+                                                alert('Copied suggested webhook to clipboard')
+                                            } catch (e) {
+                                                console.error(e)
+                                                alert('Failed to copy')
+                                            }
+                                        }}>Copy</Button>
+                                    </div>
+
+                                    <p className="text-sm text-muted-foreground">Your Twilio sandbox webhook URL (optional):</p>
+                                    <div className="flex gap-2">
+                                        <Input placeholder="https://your-sandbox.twil.io/demo-reply" value={sandboxUrl} onChange={(e) => setSandboxUrl(e.target.value)} />
+                                        <Button onClick={() => {
+                                            localStorage.setItem('twilioWhatsAppSandbox', sandboxUrl)
+                                            alert('Saved sandbox URL locally')
+                                        }}>Save</Button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Example sandbox: https://timberwolf-mastiff-9776.twil.io/demo-reply</p>
                                 </CardContent>
                             </Card>
 
