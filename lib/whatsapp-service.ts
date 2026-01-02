@@ -15,14 +15,28 @@ let LocalAuth: typeof WhatsAppLocalAuth | null = null
 let qrcode: any = null
 
 async function loadWhatsAppDependencies() {
-  if (!Client || !LocalAuth) {
-    const whatsappModule = await import("whatsapp-web.js")
-    Client = whatsappModule.Client
-    LocalAuth = whatsappModule.LocalAuth
+  try {
+    if (!Client || !LocalAuth) {
+      console.log("ℹ️ Loading whatsapp-web.js dynamic dependency...")
+      const whatsappModule = await import("whatsapp-web.js")
+      Client = whatsappModule.Client
+      LocalAuth = whatsappModule.LocalAuth
+      console.log("✅ Loaded whatsapp-web.js")
+    }
+  } catch (err: any) {
+    console.error("❌ Failed to dynamically import whatsapp-web.js:", err && err.message)
+    throw err
   }
-  if (!qrcode) {
-    const qrcodeModule = await import("qrcode-terminal")
-    qrcode = qrcodeModule.default || qrcodeModule
+
+  try {
+    if (!qrcode) {
+      const qrcodeModule = await import("qrcode-terminal")
+      qrcode = qrcodeModule.default || qrcodeModule
+      console.log("✅ Loaded qrcode-terminal")
+    }
+  } catch (err: any) {
+    console.warn("⚠️ Failed to load qrcode-terminal (terminal fallback won't work):", err && err.message)
+    qrcode = null
   }
 }
 
@@ -93,25 +107,36 @@ export async function initializeWhatsApp(waitForReady: boolean = true): Promise<
         }
       }
 
+      // Log key environment and puppeteer settings for debugging in hosted environments
+      const puppeteerExecutable = process.env.PUPPETEER_EXECUTABLE_PATH || null
+      const puppeteerArgs = [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process"
+      ]
+
+      console.log("ℹ️ Using WhatsApp auth path:", configuredDataPath)
+      console.log("ℹ️ PUPPETEER_EXECUTABLE_PATH:", puppeteerExecutable)
+      console.log("ℹ️ Puppeteer args:", puppeteerArgs)
+
+      const puppeteerOptionsAny: any = {
+        headless: true,
+        args: puppeteerArgs,
+      }
+      if (puppeteerExecutable) puppeteerOptionsAny.executablePath = puppeteerExecutable
+
       state.client = new Client({
         authStrategy: new LocalAuth({
           dataPath: configuredDataPath // persistent disk or fallback to local
         }),
-        puppeteer: {
-          headless: true,
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--no-zygote",
-            "--single-process"
-          ]
-        }
+        puppeteer: puppeteerOptionsAny,
       })
 
       state.client.on("qr", async (qr: string) => {
-        console.log("📱 WhatsApp QR Code generated")
+        console.log("📱 WhatsApp QR Code generated (length:", qr ? qr.length : 0, ")")
         // Generate QR code as data URL for web display
         try {
           const QRCode = await import("qrcode")
